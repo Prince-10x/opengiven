@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/Providers";
-import { Navbar } from "@/components/Navbar";
+import { Providers } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Opengive - Transparent Donation Tracker",
   description:
-    "A transparent donation tracker with campaign progress bars and a public donor leaderboard on the Stellar network.",
+    "A transparent donation tracker on Stellar with campaign progress bars and a public donor leaderboard.",
 };
 
 export default function RootLayout({
@@ -28,16 +27,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
-        <Providers>
-          <Navbar />
-          <main className="flex-1 container mx-auto px-4 py-6">
-            {children}
-          </main>
-        </Providers>
+      <body>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -1,81 +1,153 @@
-# Opengive - Transparent Donation Tracker
+# Opengive — Transparent Donation Tracker
 
-A transparent donation tracker with campaign progress bars and a public donor leaderboard, built on the Stellar network.
-
-## Overview
-
-Opengive is a decentralized donation platform where:
-- **Campaigns** are created on-chain with a fundraising goal
-- **Donations** are recorded on the Stellar blockchain
-- **Progress** is tracked with real-time progress bars
-- **Leaderboard** shows top donors for each campaign
-- **Activity feed** displays live events from contract interactions
+A decentralized donation tracking platform built on the **Stellar** blockchain using **Soroban smart contracts**. Every donation is recorded on-chain, providing full transparency with real-time campaign progress bars and a public donor leaderboard.
 
 ## Features
 
-- **Soroban Smart Contract** — Manages campaigns, donations, and leaderboard data on-chain
-- **Wallet Integration** — Connect via Freighter browser extension
-- **Real-Time Updates** — Automatic polling for campaign progress, donor leaderboard, and activity
-- **Transaction Tracking** — Pending/success/failed status with explorer links
-- **Event Feed** — Live activity from contract events
-- **Dark Mode** — Built-in theme toggle
-- **Responsive Design** — Works on desktop and mobile
+- 🎯 **Campaign Management** — Create fundraising campaigns with XLM goals and deadlines
+- 💰 **On-Chain Donations** — Every donation is a Soroban contract interaction
+- 📊 **Progress Bars** — Real-time campaign fundraising progress
+- 🏆 **Public Leaderboard** — Top donors ranked by total donations
+- 🔔 **Activity Feed** — Live event stream from contract interactions
+- 📜 **Transaction History** — Track pending, successful, and failed transactions
+- 🔗 **Explorer Links** — Every transaction links to Stellar Expert
+- 🌙 **Dark Mode** — Light/dark theme support
+- 👛 **Multi-Wallet** — Connect with Freighter, XBull, Albedo, and more via StellarWalletsKit
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
-- **Blockchain**: Stellar Network, Soroban Smart Contracts
-- **Wallet**: Freighter, @stellar/stellar-sdk
-- **State**: TanStack Query, Zustand
-- **Styling**: Tailwind CSS v4, next-themes
+| Layer | Technology |
+|-------|-----------|
+| **Blockchain** | Stellar (Soroban Smart Contracts) |
+| **Smart Contract** | Rust + soroban-sdk v25 |
+| **Frontend** | Next.js 15 + TypeScript |
+| **Styling** | Tailwind CSS v4 |
+| **UI Components** | shadcn/ui + Radix Primitives |
+| **Wallet** | StellarWalletsKit |
+| **Data Fetching** | TanStack Query |
+| **State Management** | Zustand |
+| **Icons** | Lucide React |
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) >= 18
+- [Bun](https://bun.sh/) (package manager)
+- [Rust](https://rustup.rs/) (for contract development)
+- [Stellar CLI](https://developers.stellar.org/docs/tools/cli) (for deployment)
+- [Freighter Wallet](https://freighter.app/) browser extension
 
 ## Setup
 
-### 1. Environment Variables
-
-Copy `.env.example` to `.env`:
+### 1. Clone and install dependencies
 
 ```bash
-cp .env.example .env
-```
-
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_STELLAR_NETWORK` | Network name (`testnet` or `public`) |
-| `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Network passphrase |
-| `NEXT_PUBLIC_STELLAR_RPC_URL` | RPC endpoint |
-| `NEXT_PUBLIC_CONTRACT_ADDRESS` | Deployed contract ID |
-
-### 2. Wallet Setup
-
-Install the [Freighter](https://freighter.app) browser extension for Chrome/Firefox/Edge.
-
-1. Install Freighter from the official website
-2. Create a new wallet or import existing
-3. Switch to Testnet in Freighter settings
-4. Fund your account using the [Stellar Lab](https://lab.stellar.org/) or Friendbot
-
-### 3. Contract Deployment
-
-See [scripts/README.md](./scripts/README.md) for deployment instructions.
-
-### 4. Local Development
-
-```bash
-# Install dependencies
+# Install client dependencies
+cd client
 bun install
 
-# Run development server
+# Build the contract (requires Rust)
+cd ../contract
+cargo build
+```
+
+### 2. Environment variables
+
+Copy `.env.example` to `.env.local` and configure:
+
+```bash
+cp .env.example .env.local
+```
+
+```env
+NEXT_PUBLIC_STELLAR_NETWORK=testnet
+NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+NEXT_PUBLIC_RPC_URL=https://soroban-testnet.stellar.org
+NEXT_PUBLIC_CONTRACT_ADDRESS=CCONTRACT_ADDRESS_HERE
+```
+
+### 3. Wallet setup
+
+Install the [Freighter Wallet](https://freighter.app/) browser extension and switch to Testnet.
+
+### 4. Contract deployment
+
+```bash
+# Make sure the Stellar CLI is installed
+# Set up your account and deploy
+cd client
+./scripts/deploy.sh
+
+# Or manually:
+cd ../contract
+stellar contract build
+stellar keys generate opengive-admin --fund --network testnet
+stellar contract deploy \
+  --wasm target/wasm32v1-none/release/opengive.wasm \
+  --source-account opengive-admin \
+  --network testnet
+```
+
+After deployment, update `NEXT_PUBLIC_CONTRACT_ADDRESS` in `.env.local` with the returned contract ID (starts with `C...`).
+
+### 5. Start the development server
+
+```bash
+cd client
 bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 5. Production Build
+### 6. Generate TypeScript bindings (optional but recommended)
 
 ```bash
-bun run build
-bun start
+stellar contract bindings typescript \
+  --contract-id <CONTRACT_ADDRESS> \
+  --output-dir packages/opengive \
+  --network testnet
+```
+
+Then add `"opengive": "file:packages/opengive"` to `package.json` dependencies and run `bun install`.
+
+## Project Structure
+
+```
+├── client/                    # Next.js frontend
+│   ├── app/                   # App router pages
+│   ├── components/            # React components
+│   ├── hooks/                 # Custom hooks
+│   ├── lib/                   # Utilities & contract helpers
+│   ├── store/                 # Zustand state stores
+│   ├── types/                 # TypeScript types
+│   ├── scripts/               # Deployment scripts
+│   ├── packages/              # Generated contract bindings
+│   └── public/                # Static assets
+├── contract/                  # Soroban workspace
+│   ├── contracts/contract/    # Opengive contract
+│   │   └── src/
+│   │       ├── lib.rs         # Contract logic
+│   │       └── test.rs        # Unit tests
+│   └── Cargo.toml
+└── README.md
+```
+
+## Contract Functions
+
+| Function | Description |
+|----------|-------------|
+| `create_campaign` | Create a new fundraising campaign |
+| `donate` | Donate XLM to a campaign |
+| `get_campaign` | Get campaign details and progress |
+| `get_campaign_donors` | Get list of donors for a campaign |
+| `get_leaderboard` | Get top donors across all campaigns |
+| `get_campaigns` | Get all campaign IDs |
+| `close_campaign` | Close a campaign (admin only) |
+
+## Smart Contract Tests
+
+```bash
+cd contract
+cargo test
 ```
 
 ## Vercel Deployment
@@ -84,54 +156,32 @@ bun start
 
 1. Push to GitHub
 2. Import project in Vercel
-3. Add environment variables (from `.env.example`)
-4. Deploy
+3. Set environment variables from `.env.example`
+4. Deploy!
 
-## Project Structure
+## Transaction Tracking
+
+The app provides real-time transaction status tracking:
+
+- **Pending** — Transaction submitted, waiting for confirmation
+- **Success** — Transaction confirmed on-chain
+- **Failed** — Transaction failed (click for details)
+
+Every transaction links to [Stellar Expert](https://stellar.expert/) for full details.
+
+## Architecture
 
 ```
-client/
-├── src/
-│   ├── app/              # Pages (Home, Dashboard, Campaigns, Activity, Transactions)
-│   ├── components/       # Reusable components
-│   │   ├── ui/           # shadcn/ui primitives
-│   │   ├── CampaignCard.tsx
-│   │   ├── CreateCampaignForm.tsx
-│   │   ├── DonateModal.tsx
-│   │   ├── EventFeed.tsx
-│   │   ├── Leaderboard.tsx
-│   │   ├── Navbar.tsx
-│   │   ├── TransactionStatus.tsx
-│   │   ├── WalletConnect.tsx
-│   │   └── CampaignProgress.tsx
-│   ├── hooks/            # React hooks
-│   ├── lib/              # Utilities
-│   ├── store/            # Zustand stores
-│   └── types/            # TypeScript types
-├── scripts/              # Deployment scripts
-├── packages/             # Generated contract bindings
-└── public/               # Static assets
-
-contract/
-├── contracts/contract/
-│   └── src/
-│       ├── lib.rs        # Soroban smart contract
-│       └── test.rs       # Contract tests
-├── Cargo.toml
-└── Makefile
+User Wallet (Freighter/XBull)
+       ↕
+  Next.js Frontend
+       ↕
+  Stellar RPC (Soroban)
+       ↕
+  Opengive Smart Contract
+       ↕
+  Stellar Ledger (Campaigns, Donations, Leaderboard)
 ```
-
-## Smart Contract
-
-The Opengive smart contract is written in Rust using the Soroban SDK. It provides:
-
-- `init()` — Initialize the contract
-- `create_campaign(title, description, goal)` — Create a new campaign
-- `donate(campaign_id, donor, amount)` — Donate to a campaign
-- `get_campaign(id)` — Get campaign details
-- `get_all_campaigns()` — Get all campaigns
-- `get_donors(id)` — Get donor leaderboard for a campaign
-- `get_campaign_count()` — Get total number of campaigns
 
 ## License
 

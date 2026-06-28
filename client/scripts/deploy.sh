@@ -2,95 +2,75 @@
 set -e
 
 echo "=== Opengive Contract Deployment ==="
-echo ""
 
-# Configuration
-NETWORK="${1:-testnet}"
-ACCOUNT="${2:-dev}"
-RPC_URL="https://soroban-${NETWORK}.stellar.org"
-NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
-
-if [ "$NETWORK" = "mainnet" ]; then
-  RPC_URL="https://soroban.stellar.org"
-  NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
+# Check if stellar CLI is installed
+if ! command -v stellar &> /dev/null; then
+    echo "Error: Stellar CLI not found. Install it first."
+    echo "curl -fsSL https://stellar.org/install | sh"
+    exit 1
 fi
+
+NETWORK="${NETWORK:-testnet}"
+ACCOUNT="${STELLAR_ACCOUNT:-opengive-admin}"
+RPC_URL="${RPC_URL:-https://soroban-testnet.stellar.org}"
+NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
 
 echo "Network: $NETWORK"
 echo "Account: $ACCOUNT"
 echo "RPC URL: $RPC_URL"
+
+# Generate and fund the account if it doesn't exist
 echo ""
+echo "1. Setting up account..."
+stellar keys generate "$ACCOUNT" --fund --network "$NETWORK" 2>/dev/null || true
 
-# Generate and fund key if not exist
-echo "1. Checking account..."
-if ! stellar keys public-key "$ACCOUNT" 2>/dev/null; then
-  echo "   Generating new key..."
-  stellar keys generate "$ACCOUNT" --network "$NETWORK" --fund
-fi
+ACCOUNT_ADDRESS=$(stellar keys public-key "$ACCOUNT" 2>/dev/null)
+echo "   Account address: $ACCOUNT_ADDRESS"
 
-echo ""
-echo "   Account public key: $(stellar keys public-key "$ACCOUNT")"
-
-# Build contract
+# Build the contract
 echo ""
 echo "2. Building contract..."
 cd "$(dirname "$0")/../../contract"
 stellar contract build
-echo "   Build complete"
+cd -
 
-# Deploy contract
+# Deploy the contract
 echo ""
-echo "3. Deploying contract..."
-CONTRACT_ID=$(stellar contract deploy \
-  --wasm target/wasm32v1-none/release/hello-world.wasm \
-  --source-account "$ACCOUNT" \
-  --network "$NETWORK" \
-  --rpc-url "$RPC_URL" \
-  --network-passphrase "$NETWORK_PASSPHRASE" \
-  | tr -d '\n')
+echo "3. Deploying contract to $NETWORK..."
+DEPLOY_OUTPUT=$(stellar contract deploy \
+    --wasm "$(dirname "$0")/../../contract/target/wasm32v1-none/release/opengive.wasm" \
+    --source-account "$ACCOUNT" \
+    --network "$NETWORK" \
+    --rpc-url "$RPC_URL" \
+    --network-passphrase "$NETWORK_PASSPHRASE" \
+    2>&1)
 
+CONTRACT_ID=$(echo "$DEPLOY_OUTPUT" | tail -1 | tr -d '[:space:]')
 echo "   Contract ID: $CONTRACT_ID"
-
-# Initialize contract
-echo ""
-echo "4. Initializing contract..."
-stellar contract invoke \
-  --id "$CONTRACT_ID" \
-  --source-account "$ACCOUNT" \
-  --network "$NETWORK" \
-  --rpc-url "$RPC_URL" \
-  --network-passphrase "$NETWORK_PASSPHRASE" \
-  -- \
-  init
-
-echo "   Contract initialized"
 
 # Generate TypeScript bindings
 echo ""
-echo "5. Generating TypeScript bindings..."
-cd "$(dirname "$0")/../client"
+echo "4. Generating TypeScript bindings..."
 stellar contract bindings typescript \
-  --contract-id "$CONTRACT_ID" \
-  --output-dir packages/contract \
-  --network "$NETWORK" \
-  --rpc-url "$RPC_URL" \
-  --network-passphrase "$NETWORK_PASSPHRASE" \
-  --overwrite
+    --contract-id "$CONTRACT_ID" \
+    --output-dir "$(dirname "$0")/../packages/opengive" \
+    --overwrite \
+    --network "$NETWORK" \
+    --rpc-url "$RPC_URL" \
+    --network-passphrase "$NETWORK_PASSPHRASE"
 
-echo "   Bindings generated"
+# Update .env.local with contract address
+echo ""
+echo "5. Updating .env.local..."
+ENV_FILE="$(dirname "$0")/../.env.local"
+if grep -q "NEXT_PUBLIC_CONTRACT_ADDRESS" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s/NEXT_PUBLIC_CONTRACT_ADDRESS=.*/NEXT_PUBLIC_CONTRACT_ADDRESS=$CONTRACT_ID/" "$ENV_FILE"
+else
+    echo "NEXT_PUBLIC_CONTRACT_ADDRESS=$CONTRACT_ID" >> "$ENV_FILE"
+fi
 
-# Build the binding package
 echo ""
-echo "6. Building binding package..."
-cd packages/contract
-npm install
-npm run build
-cd ../..
-
-echo ""
-echo "=== Deployment Complete ==="
-echo ""
-echo "Contract Address: $CONTRACT_ID"
-echo ""
-echo "Add this to your .env file:"
-echo "NEXT_PUBLIC_CONTRACT_ADDRESS=$CONTRACT_ID"
-echo ""
+echo "=== Deployment Complete! ==="
+echo "Contract ID: $CONTRACT_ID"
+echo "Update your .env.local with:"
+echo "  NEXT_PUBLIC_CONTRACT_ADDRESS=$CONTRACT_ID"

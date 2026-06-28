@@ -1,106 +1,101 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { rpc } from "@stellar/stellar-sdk";
-import type { ContractEvent } from "@/types";
+import { useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { server, CONTRACT_ADDRESS } from "@/lib/contract";
+import { useEventStore } from "@/store";
+import type { AppEvent } from "@/types";
 
-const RPC_URL = process.env.NEXT_PUBLIC_STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
+const RECENT_EVENTS_KEY = "recentEvents";
 
-export function useEvents() {
-  const [events, setEvents] = useState<ContractEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const lastLedger = useRef<string | undefined>(undefined);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+export function usePollEvents() {
+  const addEvent = useEventStore((s) => s.addEvent);
+  const events = useEventStore((s) => s.events);
+  const prevLenRef = useRef(0);
 
-  const fetchEvents = useCallback(async () => {
-    if (!CONTRACT_ADDRESS) return;
-
+  // Restore events from session storage on mount
+  useEffect(() => {
     try {
-      const server = new rpc.Server(RPC_URL);
-      const response = await server.getEvents({
-        startLedger: lastLedger.current ? Number(lastLedger.current) : undefined,
-        filters: [
-          {
-            type: "contract",
-            contractIds: [CONTRACT_ADDRESS],
-          },
-        ],
-        pagination: {
-          limit: 20,
-        },
-      });
-
-      if (response && response.events.length > 0) {
-        // Update last ledger
-        if (response.latestLedger) {
-          lastLedger.current = response.latestLedger.toString();
-        }
-
-        const newEvents: ContractEvent[] = response.events
-          .map((ev: any) => {
-            try {
-              const topics = ev.topic || [];
-              const eventType = topics[0]?.toString() || "unknown";
-              const value = ev.value || {};
-
-              // Parse based on event type
-              if (eventType.includes("camp_created")) {
-                return {
-                  type: "campaign_created",
-                  campaignId: Number(value._0 || value[0] || 0),
-                  timestamp: Math.floor(Date.now() / 1000),
-                  txHash: ev.id || "",
-                };
-              }
-
-              if (eventType.includes("donation")) {
-                return {
-                  type: "donation_received",
-                  campaignId: Number(value._0 || value[0] || 0),
-                  donor: (value._1 || value[1] || "").toString(),
-                  amount: (value._2 || value[2] || "0").toString(),
-                  timestamp: Math.floor(Date.now() / 1000),
-                  txHash: ev.id || "",
-                };
-              }
-
-              return null;
-            } catch {
-              return null;
-            }
-          })
-          .filter(Boolean) as ContractEvent[];
-
-        if (newEvents.length > 0) {
-          setEvents((prev) => {
-            const existing = new Set(prev.map((e) => e.txHash));
-            const unique = newEvents.filter((e) => !existing.has(e.txHash));
-            return [...unique, ...prev].slice(0, 100);
-          });
+      const stored = sessionStorage.getItem(RECENT_EVENTS_KEY);
+      if (stored) {
+        const parsed: AppEvent[] = JSON.parse(stored);
+        // Only restore if store is empty
+        const store = useEventStore.getState();
+        if (store.events.length === 0) {
+          parsed.forEach((e) => store.addEvent(e));
         }
       }
-
-      setIsLoading(false);
-    } catch (err) {
-      console.error("Failed to fetch events:", err);
-      setIsLoading(false);
+    } catch {
+      // ignore
     }
   }, []);
 
+  // Persist events to session storage
   useEffect(() => {
-    // Initial fetch
-    fetchEvents();
+    try {
+      sessionStorage.setItem(RECENT_EVENTS_KEY, JSON.stringify(events.slice(0, 50)));
+    } catch {
+      // ignore
+    }
+  }, [events]);
 
-    // Poll every 5 seconds
-    intervalRef.current = setInterval(fetchEvents, 5000);
+  // Poll Soroban events via RPC getEvents
+  useEffect(() => {
+    if (!CONTRACT_ADDRESS) return;
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+    const interval = setInterval(async () => {
+      try {
+        // Use RPC getEvents to fetch recent events for the contract
+        const response = await fetch(
+          process.env.NEXT_PUBLIC_RPC_URL || "https://soroban-testnet.stellar.org",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "getEvents",
+              params: {
+                startLedger: 0,
+                filters: [
+                  {
+                    type: "contract",
+                    contractIds: [CONTRACT_ADDRESS],
+                  },
+                ],
+                pagination: { limit: 20 },
+              },
+            }),
+          },
+        );
+        const data = await response.json();
+        if (data.result?.events) {
+          for (const event of data.result.events) {
+            const value = event.value;
+            const topics = event.topic;
+            // Parse donation event: topics: ["donation"], value: [campaign_id, donor, amount]
+            if (topics?.[0] === "donation") {
+              const donorAddr = value?.[1] || "unknown";
+              const campId = value?.[0] || 0;
+              addEvent({
+                type: "donation",
+                timestamp: Date.now(),
+                wallet: donorAddr,
+                action: `Donated to campaign #${campId}`,
+                txHash: event.id,
+              });
+            }
+          }
+        }
+      } catch {
+        // Polling is best-effort
       }
-    };
-  }, [fetchEvents]);
+    }, 10_000);
 
-  return { events, isLoading, refetch: fetchEvents };
+    return () => clearInterval(interval);
+  }, [addEvent]);
+}
+
+export function useEvents() {
+  return useEventStore((s) => s.events);
 }

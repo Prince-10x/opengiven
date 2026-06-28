@@ -1,10 +1,9 @@
 export interface Campaign {
-  id: number;
-  title: string;
-  description: string;
+  name: string;
   goal: string;
-  raised: string;
-  donor_count: number;
+  total_raised: string;
+  deadline: number;
+  admin: string;
   active: boolean;
 }
 
@@ -14,29 +13,27 @@ export interface Donation {
   timestamp: number;
 }
 
-export interface WalletState {
-  address: string | null;
-  isConnected: boolean;
-  isConnecting: boolean;
-  network: string;
-  balance: string;
+export interface DonorInfo {
+  donor: string;
+  total_donated: string;
 }
 
-export interface TransactionRecord {
+export interface CampaignWithId {
+  id: number;
+  campaign: Campaign;
+}
+
+export interface TransactionStatus {
   hash: string;
   status: "pending" | "success" | "failed";
-  type: "donate" | "create_campaign";
-  campaignId?: number;
-  amount?: string;
+  label: string;
   timestamp: number;
-  error?: string;
 }
 
-export interface ContractEvent {
+export interface AppEvent {
   type: string;
-  campaignId?: number;
-  donor?: string;
-  amount?: string;
   timestamp: number;
-  txHash: string;
+  wallet: string;
+  action: string;
+  txHash?: string;
 }

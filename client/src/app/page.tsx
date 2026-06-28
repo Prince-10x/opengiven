@@ -1,148 +1,183 @@
 "use client";
 
-import Link from "next/link";
-import { Gift, Heart, Shield, Zap, ArrowRight, TrendingUp, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useCallback } from "react";
+import { Navbar } from "@/components/Navbar";
+import { CampaignCard } from "@/components/CampaignCard";
+import { CreateCampaignModal } from "@/components/CreateCampaignModal";
+import { DonorLeaderboard } from "@/components/DonorLeaderboard";
+import { EventFeed } from "@/components/EventFeed";
+import { TransactionTracker } from "@/components/TransactionTracker";
+import { useCampaigns, useCreateCampaign, useDonate } from "@/hooks/useContract";
+import { usePollEvents } from "@/hooks/useEvents";
+import { useWallet } from "@/hooks/useWallet";
+import { Plus, Gift, Activity, Trophy, ArrowRight, Loader2 } from "lucide-react";
 
-const features = [
-  {
-    icon: Gift,
-    title: "Campaign Creation",
-    description: "Launch transparent fundraising campaigns on the Stellar network.",
-  },
-  {
-    icon: Shield,
-    title: "On-Chain Transparency",
-    description: "All donations are recorded on the Stellar blockchain for full transparency.",
-  },
-  {
-    icon: TrendingUp,
-    title: "Progress Tracking",
-    description: "Real-time progress bars showing campaign fundraising status.",
-  },
-  {
-    icon: Users,
-    title: "Donor Leaderboard",
-    description: "Public leaderboard showcasing top donors for each campaign.",
-  },
-  {
-    icon: Zap,
-    title: "Live Activity Feed",
-    description: "Real-time event feed showing all campaign and donation activity.",
-  },
-  {
-    icon: Heart,
-    title: "Wallet Integration",
-    description: "Connect with Freighter wallet to donate and create campaigns.",
-  },
-];
+function Home() {
+  const { address, isConnected, signTx } = useWallet();
+  const { data: campaigns, isLoading, error } = useCampaigns();
+  const createCampaign = useCreateCampaign();
+  const donate = useDonate();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"campaigns" | "leaderboard" | "events" | "transactions">("campaigns");
 
-export default function HomePage() {
+  usePollEvents();
+
+  const handleCreateCampaign = useCallback(
+    (name: string, goal: number, deadline: number) => {
+      if (!address) return;
+      createCampaign.mutate({
+        admin: address,
+        name,
+        goal,
+        deadline,
+        signTx,
+      });
+      setCreateOpen(false);
+    },
+    [address, createCampaign],
+  );
+
+  const handleDonate = useCallback(
+    (campaignId: number, amount: number) => {
+      if (!address) return;
+      donate.mutate({
+        donor: address,
+        campaignId,
+        amount,
+        signTx,
+      });
+    },
+    [address, donate],
+  );
+
+  const tabs = [
+    { id: "campaigns", label: "Campaigns", icon: Gift },
+    { id: "leaderboard", label: "Leaderboard", icon: Trophy },
+    { id: "events", label: "Activity", icon: Activity },
+    { id: "transactions", label: "Transactions", icon: ArrowRight },
+  ] as const;
+
   return (
-    <div className="space-y-16">
-      {/* Hero */}
-      <section className="flex flex-col items-center text-center py-16 md:py-24">
-        <div className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-4 py-1.5 text-sm mb-8">
-          <Zap className="h-4 w-4 text-primary" />
-          <span>Built on Stellar Network</span>
-        </div>
-        <h1 className="text-4xl md:text-6xl font-bold tracking-tight max-w-3xl">
-          Transparent Donation Tracking
-          <span className="text-primary block mt-2">
-            On the Blockchain
-          </span>
-        </h1>
-        <p className="text-lg text-muted-foreground max-w-2xl mt-6">
-          Opengive is a decentralized donation platform where every contribution
-          is recorded on the Stellar network. Create campaigns, track progress,
-          and see who's donating — all on-chain.
-        </p>
-        <div className="flex gap-4 mt-8">
-          <Link href="/campaigns">
-            <Button size="lg" className="gap-2">
-              Explore Campaigns
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/dashboard">
-            <Button variant="outline" size="lg">
-              Get Started
-            </Button>
-          </Link>
-        </div>
-      </section>
+    <div className="min-h-screen bg-background">
+      <Navbar />
 
-      {/* Stats */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-        <Card className="text-center">
-          <CardHeader>
-            <CardTitle className="text-3xl font-bold text-primary">100%</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription>On-Chain Transparency</CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="text-center">
-          <CardHeader>
-            <CardTitle className="text-3xl font-bold text-primary">Real-Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription>Progress & Activity Updates</CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="text-center">
-          <CardHeader>
-            <CardTitle className="text-3xl font-bold text-primary">Stellar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription>Secure & Low-Cost Network</CardDescription>
-          </CardContent>
-        </Card>
-      </section>
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Hero Section */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">
+                Transparent Donation Tracker
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Every donation is recorded on the Stellar blockchain. Full transparency, zero trust needed.
+              </p>
+            </div>
+            {isConnected && (
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-10 px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Campaign
+              </button>
+            )}
+          </div>
+        </div>
 
-      {/* Features */}
-      <section className="py-8">
-        <h2 className="text-2xl font-bold text-center mb-10">
-          Everything You Need
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature) => {
-            const Icon = feature.icon;
+        {/* Tabs */}
+        <div className="flex gap-1 mb-6 border-b">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
             return (
-              <Card key={feature.title} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
-                    <Icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <CardTitle className="text-lg">{feature.title}</CardTitle>
-                  <CardDescription>{feature.description}</CardDescription>
-                </CardHeader>
-              </Card>
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
             );
           })}
         </div>
-      </section>
 
-      {/* CTA */}
-      <section className="text-center py-12">
-        <Card className="max-w-2xl mx-auto bg-primary/5 border-primary/20">
-          <CardHeader>
-            <CardTitle className="text-2xl">Ready to Make a Difference?</CardTitle>
-            <CardDescription className="text-base">
-              Connect your wallet to start donating or create your own campaign.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/dashboard">
-              <Button size="lg" className="gap-2">
-                Get Started Now
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </section>
+        {/* Tab Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {activeTab === "campaigns" && (
+            <div className="lg:col-span-3">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : error ? (
+                <div className="text-center py-16">
+                  <p className="text-red-500">Failed to load campaigns</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Make sure the contract is deployed and configured
+                  </p>
+                </div>
+              ) : !campaigns || campaigns.length === 0 ? (
+                <div className="text-center py-16 border rounded-lg">
+                  <Gift className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                  <h3 className="text-lg font-semibold mt-4">No campaigns yet</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {isConnected
+                      ? "Create the first campaign to get started!"
+                      : "Connect your wallet to create or donate to campaigns."}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {campaigns.map((c) => (
+                    <CampaignCard
+                      key={c.id}
+                      data={c}
+                      walletAddress={address}
+                      onDonate={handleDonate}
+                      isDonating={donate.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "leaderboard" && (
+            <div className="lg:col-span-3 max-w-2xl mx-auto w-full">
+              <h2 className="text-xl font-semibold mb-4">Top Donors</h2>
+              <DonorLeaderboard />
+            </div>
+          )}
+
+          {activeTab === "events" && (
+            <div className="lg:col-span-3 max-w-2xl mx-auto w-full">
+              <h2 className="text-xl font-semibold mb-4">Activity Feed</h2>
+              <EventFeed />
+            </div>
+          )}
+
+          {activeTab === "transactions" && (
+            <div className="lg:col-span-3 max-w-2xl mx-auto w-full">
+              <h2 className="text-xl font-semibold mb-4">Transaction History</h2>
+              <TransactionTracker />
+            </div>
+          )}
+        </div>
+      </main>
+
+      <CreateCampaignModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreate={handleCreateCampaign}
+        isCreating={createCampaign.isPending}
+      />
     </div>
   );
 }
+
+export default Home;

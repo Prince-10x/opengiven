@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@stellar/stellar-sdk"],
+  /* config options here */
 };
 
 export default nextConfig;

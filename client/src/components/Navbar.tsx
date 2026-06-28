@@ -1,93 +1,70 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Gift, LayoutDashboard, List, Activity, History, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { Button } from "@/components/ui/button";
-import { WalletConnect } from "@/components/WalletConnect";
+import { Moon, Sun, Wallet, LogOut } from "lucide-react";
+import { useWallet } from "@/hooks/useWallet";
+import { truncateAddress } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-const navLinks = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/campaigns", label: "Campaigns", icon: List },
-  { href: "/activity", label: "Activity", icon: Activity },
-  { href: "/transactions", label: "Transactions", icon: History },
-];
-
 export function Navbar() {
-  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { address, isConnected, isConnecting, error, connect, disconnect } =
+    useWallet();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl">
-            <Gift className="h-6 w-6 text-primary" />
-            <span>Opengive</span>
-          </Link>
-
-          <nav className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => {
-              const Icon = link.icon;
-              const isActive = pathname === link.href;
-              return (
-                <Link key={link.href} href={link.href}>
-                  <Button
-                    variant={isActive ? "secondary" : "ghost"}
-                    size="sm"
-                    className={cn(
-                      "gap-2",
-                      isActive && "bg-secondary font-medium"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {link.label}
-                  </Button>
-                </Link>
-              );
-            })}
-          </nav>
+    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex h-16 items-center justify-between px-4 md:px-8 max-w-7xl mx-auto">
+        <div className="flex items-center gap-2">
+          <span className="text-xl font-bold tracking-tight">Opengive</span>
+          <span className="hidden sm:inline text-sm text-muted-foreground ml-2">
+            Transparent Donation Tracker
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
+          {error && (
+            <span className="text-xs text-red-500 max-w-[200px] truncate">
+              {error}
+            </span>
+          )}
+
+          {isConnected && address ? (
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline text-sm font-mono text-muted-foreground">
+                {truncateAddress(address)}
+              </span>
+              <button
+                onClick={disconnect}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-9 px-3 border border-input hover:bg-accent hover:text-accent-foreground"
+              >
+                <LogOut className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Disconnect</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={connect}
+              disabled={isConnecting}
+              className={cn(
+                "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-9 px-4",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+                isConnecting && "opacity-50 cursor-not-allowed",
+              )}
+            >
+              <Wallet className="h-4 w-4 sm:mr-2" />
+              <span>{isConnecting ? "Connecting..." : "Connect Wallet"}</span>
+            </button>
+          )}
+
+          <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="hidden sm:flex"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-9 w-9 border border-input hover:bg-accent hover:text-accent-foreground"
           >
-            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
-          </Button>
-          <WalletConnect />
+            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          </button>
         </div>
       </div>
-
-      {/* Mobile nav */}
-      <nav className="md:hidden flex items-center justify-around border-t px-2 py-1.5">
-        {navLinks.map((link) => {
-          const Icon = link.icon;
-          const isActive = pathname === link.href;
-          return (
-            <Link key={link.href} href={link.href}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "gap-1 text-xs",
-                  isActive && "text-primary font-medium"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {link.label}
-              </Button>
-            </Link>
-          );
-        })}
-      </nav>
-    </header>
+    </nav>
   );
 }

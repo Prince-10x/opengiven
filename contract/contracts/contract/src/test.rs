@@ -1,38 +1,29 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Env, String};
-
-#[test]
-fn test_init_and_campaign_count() {
-    let env = Env::default();
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    assert_eq!(client.get_campaign_count(), 0);
-}
+use soroban_sdk::{Env, String, Address};
+use soroban_sdk::testutils::{Address as _, Ledger};
 
 #[test]
 fn test_create_campaign() {
     let env = Env::default();
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
+    env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
 
-    client.init();
-
+    let admin = Address::generate(&env);
     let id = client.create_campaign(
+        &admin,
         &String::from_str(&env, "Help Kids"),
-        &String::from_str(&env, "Donate to help children"),
-        &1000i128,
+        &1_000_000_000i128,
+        &(env.ledger().timestamp() + 86400),
     );
     assert_eq!(id, 1);
-    assert_eq!(client.get_campaign_count(), 1);
 
-    let campaign = client.get_campaign(&1);
-    assert_eq!(campaign.title, String::from_str(&env, "Help Kids"));
-    assert_eq!(campaign.goal, 1000i128);
-    assert_eq!(campaign.raised, 0);
+    let campaign = client.get_campaign(&id);
+    assert_eq!(campaign.name, String::from_str(&env, "Help Kids"));
+    assert_eq!(campaign.goal, 1_000_000_000);
+    assert_eq!(campaign.total_raised, 0);
     assert!(campaign.active);
 }
 
@@ -40,186 +31,138 @@ fn test_create_campaign() {
 fn test_donate() {
     let env = Env::default();
     env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
 
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.create_campaign(
-        &String::from_str(&env, "School Fund"),
-        &String::from_str(&env, "Build a school"),
-        &5000i128,
+    let admin = Address::generate(&env);
+    let donor = Address::generate(&env);
+    let id = client.create_campaign(
+        &admin,
+        &String::from_str(&env, "Help Kids"),
+        &1_000_000_000i128,
+        &(env.ledger().timestamp() + 86400),
     );
 
-    let donor = Address::generate(&env);
-    client.donate(&1, &donor, &500i128);
+    client.donate(&donor, &id, &500_000_000i128);
 
-    let campaign = client.get_campaign(&1);
-    assert_eq!(campaign.raised, 500);
-    assert_eq!(campaign.donor_count, 1);
+    let campaign = client.get_campaign(&id);
+    assert_eq!(campaign.total_raised, 500_000_000);
 
-    let donors = client.get_donors(&1);
+    let donors = client.get_campaign_donors(&id);
     assert_eq!(donors.len(), 1);
-    assert_eq!(donors.get(0).unwrap().amount, 500);
-    assert_eq!(donors.get(0).unwrap().donor, donor);
+    assert_eq!(donors.get(0).unwrap().amount, 500_000_000);
 }
 
 #[test]
-fn test_multiple_donations() {
+fn test_leaderboard() {
     let env = Env::default();
     env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
 
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.create_campaign(
-        &String::from_str(&env, "Medical Aid"),
-        &String::from_str(&env, "Help sick patients"),
-        &10000i128,
-    );
-
+    let admin = Address::generate(&env);
     let donor1 = Address::generate(&env);
     let donor2 = Address::generate(&env);
-    let donor3 = Address::generate(&env);
+    let id = client.create_campaign(
+        &admin,
+        &String::from_str(&env, "Help Kids"),
+        &1_000_000_000i128,
+        &(env.ledger().timestamp() + 86400),
+    );
 
-    client.donate(&1, &donor1, &1000i128);
-    client.donate(&1, &donor2, &2000i128);
-    client.donate(&1, &donor3, &1500i128);
+    client.donate(&donor1, &id, &300_000_000i128);
+    client.donate(&donor2, &id, &500_000_000i128);
 
-    let campaign = client.get_campaign(&1);
-    assert_eq!(campaign.raised, 4500);
-    assert_eq!(campaign.donor_count, 3);
-
-    let donors = client.get_donors(&1);
-    assert_eq!(donors.len(), 3);
+    let board = client.get_leaderboard();
+    assert_eq!(board.len(), 2);
 }
 
 #[test]
 fn test_multiple_campaigns() {
     let env = Env::default();
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
+    env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
 
-    client.init();
+    let admin = Address::generate(&env);
+    let deadline = env.ledger().timestamp() + 86400;
 
-    client.create_campaign(
-        &String::from_str(&env, "Campaign A"),
-        &String::from_str(&env, "First campaign"),
-        &1000i128,
-    );
-    client.create_campaign(
-        &String::from_str(&env, "Campaign B"),
-        &String::from_str(&env, "Second campaign"),
-        &2000i128,
-    );
+    let id1 = client.create_campaign(&admin, &String::from_str(&env, "C1"), &1_000_000_000i128, &deadline);
+    let id2 = client.create_campaign(&admin, &String::from_str(&env, "C2"), &2_000_000_000i128, &deadline);
 
-    assert_eq!(client.get_campaign_count(), 2);
+    assert_eq!(id1, 1);
+    assert_eq!(id2, 2);
 
-    let campaigns = client.get_all_campaigns();
+    let campaigns = client.get_campaigns();
     assert_eq!(campaigns.len(), 2);
-    assert_eq!(campaigns.get(0).unwrap().id, 1);
-    assert_eq!(campaigns.get(1).unwrap().id, 2);
+    assert_eq!(campaigns.get(0).unwrap(), 1);
+}
+
+#[test]
+fn test_close_campaign() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let id = client.create_campaign(
+        &admin,
+        &String::from_str(&env, "Help Kids"),
+        &1_000_000_000i128,
+        &(env.ledger().timestamp() + 86400),
+    );
+
+    client.close_campaign(&admin, &id);
+    let campaign = client.get_campaign(&id);
+    assert!(!campaign.active);
 }
 
 #[test]
 #[should_panic(expected = "campaign not found")]
 fn test_get_nonexistent_campaign() {
     let env = Env::default();
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.get_campaign(&99);
+    env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
+    client.get_campaign(&999);
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
-fn test_donate_zero_amount() {
+#[should_panic(expected = "campaign closed")]
+fn test_donate_closed_campaign() {
     let env = Env::default();
     env.mock_all_auths();
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
 
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.create_campaign(
-        &String::from_str(&env, "Test"),
-        &String::from_str(&env, "Desc"),
-        &100i128,
-    );
-
+    let admin = Address::generate(&env);
     let donor = Address::generate(&env);
-    client.donate(&1, &donor, &0i128);
+    let id = client.create_campaign(
+        &admin,
+        &String::from_str(&env, "Test"),
+        &1_000_000_000i128,
+        &(env.ledger().timestamp() + 86400),
+    );
+    client.close_campaign(&admin, &id);
+    client.donate(&donor, &id, &100i128);
 }
 
 #[test]
-fn test_donate_requires_auth() {
-    let env = Env::default();
-    // No mock_all_auths — will fail
-
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.create_campaign(
-        &String::from_str(&env, "Test"),
-        &String::from_str(&env, "Desc"),
-        &100i128,
-    );
-
-    let donor = Address::generate(&env);
-    let result = client.try_donate(&1, &donor, &50i128);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_donors_in_order() {
+#[should_panic(expected = "campaign ended")]
+fn test_donate_expired_campaign() {
     let env = Env::default();
     env.mock_all_auths();
+    // Set ledger timestamp to a known value
+    env.ledger().set_timestamp(500);
+    let contract_id = env.register(Opengive, ());
+    let client = OpengiveClient::new(&env, &contract_id);
 
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.create_campaign(
-        &String::from_str(&env, "Test"),
-        &String::from_str(&env, "Desc"),
-        &1000i128,
-    );
-
-    let alice = Address::generate(&env);
-    let bob = Address::generate(&env);
-
-    client.donate(&1, &alice, &100i128);
-    client.donate(&1, &bob, &200i128);
-
-    let donors = client.get_donors(&1);
-    assert_eq!(donors.len(), 2);
-    assert_eq!(donors.get(0).unwrap().donor, alice);
-    assert_eq!(donors.get(1).unwrap().donor, bob);
-}
-
-#[test]
-fn test_campaign_progress() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register(Contract, ());
-    let client = ContractClient::new(&env, &contract_id);
-
-    client.init();
-    client.create_campaign(
-        &String::from_str(&env, "Progress Test"),
-        &String::from_str(&env, "Test progress"),
-        &1000i128,
-    );
-
+    let admin = Address::generate(&env);
     let donor = Address::generate(&env);
-    client.donate(&1, &donor, &250i128);
-
-    let campaign = client.get_campaign(&1);
-    assert_eq!(campaign.goal, 1000);
-    assert_eq!(campaign.raised, 250);
-    // Progress should be 25%
+    // Campaign with deadline at 100
+    let id = client.create_campaign(&admin, &String::from_str(&env, "Expired"), &1_000_000_000i128, &100);
+    // Advance ledger past deadline
+    env.ledger().set_timestamp(200);
+    client.donate(&donor, &id, &100i128);
 }

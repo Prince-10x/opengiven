@@ -1,126 +1,99 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
-import { toast } from "sonner";
-import { calculateProgress, formatStroops } from "@/lib/utils";
-import type { Campaign } from "@/types";
+import { X } from "lucide-react";
 
-interface DonateModalProps {
-  campaign: Campaign | null;
+interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDonate: (campaignId: number, amount: string) => Promise<string>;
+  campaignId: number;
+  campaignName: string;
+  onDonate: (campaignId: number, amount: number) => void;
   isDonating: boolean;
 }
 
 export function DonateModal({
-  campaign,
   open,
   onOpenChange,
+  campaignId,
+  campaignName,
   onDonate,
   isDonating,
-}: DonateModalProps) {
+}: Props) {
   const [amount, setAmount] = useState("");
 
-  if (!campaign) return null;
+  if (!open) return null;
 
-  const progress = calculateProgress(campaign.raised, campaign.goal);
-
-  const handleDonate = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) {
-      toast.error("Please enter a valid amount");
-      return;
-    }
-
-    try {
-      // Convert XLM to stroops
-      const amtStroops = BigInt(Math.round(amt * 1e7)).toString();
-      await onDonate(campaign.id, amtStroops);
-      toast.success(`Donated ${amt} XLM to "${campaign.title}"!`);
-      setAmount("");
-      onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to process donation");
-    }
+    if (!amount) return;
+    const amountStroops = Math.floor(parseFloat(amount) * 10_000_000);
+    onDonate(campaignId, amountStroops);
+    setAmount("");
+    onOpenChange(false);
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Donate to {campaign.title}</DialogTitle>
-          <DialogDescription>
-            Support this campaign with a donation in XLM.
-          </DialogDescription>
-        </DialogHeader>
+  const quickAmounts = [10, 50, 100, 500];
 
-        <div className="space-y-4">
-          <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Progress</span>
-              <span className="font-medium">{progress}%</span>
-            </div>
-            <Progress value={progress} />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{formatStroops(campaign.raised)} raised</span>
-              <span>Goal: {formatStroops(campaign.goal)}</span>
-            </div>
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+      <div className="relative w-full max-w-sm rounded-lg border bg-background p-6 shadow-lg">
+        <button
+          onClick={() => onOpenChange(false)}
+          className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <h2 className="text-lg font-semibold mb-1">Donate</h2>
+        <p className="text-sm text-muted-foreground mb-4">{campaignName}</p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Amount (XLM)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              required
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-lg font-medium ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
           </div>
 
-          <form onSubmit={handleDonate} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="amount">
-                Donation Amount (XLM)
-              </label>
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="10"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-            </div>
-
-            <DialogFooter>
-              <Button
-                type="submit"
-                disabled={isDonating}
-                className="w-full gap-2"
+          <div className="flex gap-2 flex-wrap">
+            {quickAmounts.map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => setAmount(a.toString())}
+                className="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors h-8 px-3 border border-input hover:bg-accent"
               >
-                {isDonating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Heart className="h-4 w-4" />
-                    Donate {amount ? `${amount} XLM` : ""}
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </div>
-      </DialogContent>
-    </Dialog>
+                {a} XLM
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-10 px-4 border border-input hover:bg-accent"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isDonating || !amount || parseFloat(amount) <= 0}
+              className="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-10 px-4 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {isDonating ? "Processing..." : "Donate"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

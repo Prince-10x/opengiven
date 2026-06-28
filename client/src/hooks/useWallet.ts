@@ -1,11 +1,28 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
-import { useWalletStore } from "@/store/walletStore";
+import { useCallback, useEffect, useState } from "react";
+import {
+  StellarWalletsKit,
+  Networks,
+  KitEventType,
+} from "@creit.tech/stellar-wallets-kit";
+import { defaultModules } from "@creit.tech/stellar-wallets-kit/modules/utils";
+import { useWalletStore } from "@/store";
 
-// Check if Freighter is available
-function isFreighterAvailable(): boolean {
-  return typeof window !== "undefined" && "stellar" in window && "freighter" in (window as any).stellar;
+// Initialize the kit statically (only once)
+const NETWORK_PASSPHRASE =
+  process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ||
+  "Test SDF Network ; September 2015";
+
+let initialized = false;
+function ensureKitInit() {
+  if (!initialized) {
+    StellarWalletsKit.init({
+      modules: defaultModules(),
+      network: Networks.TESTNET,
+    });
+    initialized = true;
+  }
 }
 
 export function useWallet() {
@@ -13,136 +30,96 @@ export function useWallet() {
     address,
     isConnected,
     isConnecting,
-    network,
-    balance,
     setAddress,
     setConnected,
     setConnecting,
-    setNetwork,
-    setBalance,
-    reset,
+    disconnect: storeDisconnect,
   } = useWalletStore();
 
-  const checkConnection = useCallback(async () => {
-    try {
-      if (!isFreighterAvailable()) return;
+  const [error, setError] = useState<string | null>(null);
 
-      const { isConnected: connected } = await window.stellar!.freighter.isConnected();
-      if (connected) {
-        const { address: addr } = await window.stellar!.freighter.getAddress();
-        setAddress(addr);
-        setConnected(true);
-
-        // Get network
-        try {
-          const networkDetails = await window.stellar!.freighter.getNetworkDetails();
-          const net = networkDetails.networkPassphrase?.includes("Test")
-            ? "testnet"
-            : "public";
-          setNetwork(net);
-        } catch {
-          setNetwork("testnet");
-        }
-      }
-    } catch (err) {
-      console.error("Failed to check wallet connection:", err);
-    }
-  }, [setAddress, setConnected, setNetwork]);
-
+  // Listen for wallet state changes (network switch, disconnects)
   useEffect(() => {
-    checkConnection();
-  }, [checkConnection]);
+    ensureKitInit();
+    const unsub = StellarWalletsKit.on(
+      KitEventType.STATE_UPDATED,
+      (event) => {
+        if (event.payload.address) {
+          setAddress(event.payload.address);
+          setConnected(true);
+        } else {
+          setAddress(null);
+          setConnected(false);
+        }
+      },
+    );
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [setAddress, setConnected]);
 
   const connect = useCallback(async () => {
+    ensureKitInit();
+    setConnecting(true);
+    setError(null);
     try {
-      if (!isFreighterAvailable()) {
-        throw new Error(
-          "Freighter wallet not found. Please install the Freighter browser extension."
-        );
-      }
-
-      setConnecting(true);
-
-      // Request access
-      const { isAllowed } = await window.stellar!.freighter.isAllowed();
-      if (!isAllowed) {
-        await window.stellar!.freighter.setAllowed();
-      }
-
-      const { address: addr } = await window.stellar!.freighter.getAddress();
+      const { address: addr } = await StellarWalletsKit.authModal();
       setAddress(addr);
       setConnected(true);
-
-      // Get network details
-      try {
-        const networkDetails = await window.stellar!.freighter.getNetworkDetails();
-        const net = networkDetails.networkPassphrase?.includes("Test")
-          ? "testnet"
-          : "public";
-        setNetwork(net);
-      } catch {
-        setNetwork("testnet");
+    } catch (e: any) {
+      // User closed the modal
+      if (e?.code === -1) {
+        // Modal closed — not an error, just no selection
+        return;
       }
-
-      return addr;
-    } catch (err: any) {
-      const message = err?.message || "Failed to connect wallet";
-      if (message.includes("not found") || message.includes("Freighter")) {
-        throw new Error(
-          "Wallet not found. Please install the Freighter browser extension from https://freighter.app"
+      if (
+        typeof e?.message === "string" &&
+        (e.message.toLowerCase().includes("reject") ||
+          e.message.toLowerCase().includes("denied") ||
+          e.message.toLowerCase().includes("cancelled"))
+      ) {
+        setError("Transaction rejected by user");
+      } else if (
+        typeof e?.message === "string" &&
+        e.message.toLowerCase().includes("not found")
+      ) {
+        setError(
+          "Wallet not found. Please install Freighter or another Stellar wallet.",
         );
+      } else {
+        setError(e?.message || "Failed to connect wallet");
       }
-      if (message.includes("rejected") || message.includes("denied")) {
-        throw new Error("User rejected the connection request.");
-      }
-      throw err;
     } finally {
       setConnecting(false);
     }
-  }, [setAddress, setConnected, setConnecting, setNetwork]);
+  }, [setAddress, setConnected, setConnecting]);
 
-  const disconnect = useCallback(() => {
-    reset();
-  }, [reset]);
-
-  const signTransaction = useCallback(
+  const signTx = useCallback(
     async (xdr: string): Promise<string> => {
-      if (!isFreighterAvailable()) {
-        throw new Error("Freighter wallet not found.");
-      }
-
-      try {
-        const { signedTxXdr } = await window.stellar!.freighter.signTransaction(xdr, {
-          networkPassphrase:
-            network === "testnet"
-              ? "Test SDF Network ; September 2015"
-              : "Public Global Stellar Network ; September 2015",
-        });
-        return signedTxXdr;
-      } catch (err: any) {
-        const message = err?.message || "";
-        if (message.includes("rejected") || message.includes("cancel") || message.includes("denied")) {
-          throw new Error("Transaction was rejected by user.");
-        }
-        if (message.includes("insufficient") || message.includes("balance")) {
-          throw new Error("Insufficient balance to complete this transaction.");
-        }
-        throw err;
-      }
+      ensureKitInit();
+      const addr = useWalletStore.getState().address;
+      if (!addr) throw new Error("No wallet connected");
+      const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address: addr,
+      });
+      return signedTxXdr;
     },
-    [network]
+    [],
   );
+
+  const handleDisconnect = useCallback(() => {
+    storeDisconnect();
+    setError(null);
+  }, [storeDisconnect]);
 
   return {
     address,
     isConnected,
     isConnecting,
-    network,
-    balance,
+    error,
     connect,
-    disconnect,
-    signTransaction,
-    checkConnection,
-    isFreighterAvailable: isFreighterAvailable(),
+    signTx,
+    disconnect: handleDisconnect,
   };
 }
